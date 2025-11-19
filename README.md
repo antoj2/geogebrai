@@ -1,4 +1,4 @@
-# Welcome to GeoGebra!
+# Welcome to GeoGebr-AI!
 
 
 This repository contains source code of [GeoGebra](https://www.geogebra.org)'s math apps.
