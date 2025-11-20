@@ -17,7 +17,6 @@ import org.gwtproject.core.client.Scheduler;
 
 /**
  * Class to evaluate AV Input row.
- *
  * @author laszlo
  *
  */
@@ -30,7 +29,6 @@ public class EvaluateInput {
 
 	/**
 	 * Constructor.
-	 *
 	 * @param item to evaluate.
 	 * @param ctrl the controller.
 	 */
@@ -53,16 +51,19 @@ public class EvaluateInput {
 	}
 
 	/**
-	 * @param keepFocus
-	 *          whether the focus should stay afterwards
+	 * @param keepFocus whether the focus should stay afterwards
 	 */
 	public void createGeoFromInput(final boolean keepFocus) {
 		evaluate(keepFocus, evaluationCallback(keepFocus));
 	}
 
+	public void createGeoFromArbitraryString(String input,
+			boolean keepFocus) {
+		evaluateArbitraryString(input, keepFocus, evaluationCallback(keepFocus));
+	}
+
 	/**
-	 * @param afterCb
-	 *            additional callback that runs after creation.
+	 * @param afterCb additional callback that runs after creation.
 	 */
 	public void createGeoFromInput(final AsyncOperation<GeoElementND[]> afterCb) {
 		evaluate(true, createEvaluationCallback(afterCb));
@@ -81,8 +82,7 @@ public class EvaluateInput {
 	}
 
 	private String getValidInput(String userInput) {
-		return app.getKernel().getInputPreviewHelper()
-				.getInput(userInput);
+		return app.getKernel().getInputPreviewHelper().getInput(userInput);
 	}
 
 	private String getInput(String userInput, String validInput) {
@@ -91,8 +91,25 @@ public class EvaluateInput {
 		return textInput ? "\"" + input + "\"" : input;
 	}
 
-	private void evaluate(final boolean keepFocus,
+	private void evaluateArbitraryString(String input, boolean keepFocus,
 			AsyncOperation<GeoElementND[]> cbEval) {
+		boolean withSliders = app.getConfig().hasAutomaticSliders();
+
+		ctrl.setInputAsText(false);
+		app.setScrollToShow(true);
+
+		final ErrorHandler err = getErrorHandler(input, keepFocus, withSliders);
+		EvalInfo info = EvalInfoFactory.getEvalInfoForAV(app, withSliders);
+
+		// undo point stored in callback
+		AsyncManager asyncManager = ((AppW) app).getAsyncManager();
+		asyncManager.scheduleCallback(() -> processAlgebraInput(input, err, info, cbEval));
+		if (!keepFocus) {
+			item.setFocus(false);
+		}
+	}
+
+	private void evaluate(final boolean keepFocus, AsyncOperation<GeoElementND[]> cbEval) {
 		String userInput = getUserInput();
 		String validInput = getValidInput(userInput);
 		String input = getInput(userInput, validInput);
@@ -123,8 +140,7 @@ public class EvaluateInput {
 	private void processAlgebraInput(String input, ErrorHandler err, EvalInfo info,
 			AsyncOperation<GeoElementND[]> cbEval) {
 		app.getKernel().getAlgebraProcessor()
-				.processAlgebraCommandNoExceptionHandling(input, false, err,
-						info, cbEval);
+				.processAlgebraCommandNoExceptionHandling(input, false, err, info, cbEval);
 	}
 
 	private AsyncOperation<GeoElementND[]> evaluationCallback(final boolean keepFocus) {
@@ -150,21 +166,19 @@ public class EvaluateInput {
 					geos[0].setEuclidianVisible(false);
 				}
 			}
-			InputHelper.updateProperties(geos, app.getActiveEuclidianView(),
-					oldStep);
+			InputHelper.updateProperties(geos, app.getActiveEuclidianView(), oldStep);
 			selectionCallback.callback(geos);
 			app.storeUndoInfo();
 			app.setScrollToShow(false);
 
-			Scheduler.get()
-					.scheduleDeferred(() -> {
-						item.scrollIntoView();
-						if (keepFocus) {
-							ctrl.setFocus(true);
-						} else {
-							item.setFocus(false);
-						}
-					});
+			Scheduler.get().scheduleDeferred(() -> {
+				item.scrollIntoView();
+				if (keepFocus) {
+					ctrl.setFocus(true);
+				} else {
+					item.setFocus(false);
+				}
+			});
 
 			item.setText("");
 			item.removeOutput();

@@ -1,7 +1,10 @@
 package org.geogebra.web.full.gui.view.algebra;
 
 import java.util.HashMap;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
+import org.geogebra.common.kernel.geos.GeoElement;
 import org.geogebra.common.kernel.kernelND.GeoElementND;
 import org.geogebra.common.plugin.Event;
 import org.geogebra.common.plugin.EventType;
@@ -16,6 +19,12 @@ import org.gwtproject.core.client.Scheduler;
 import org.gwtproject.event.dom.client.BlurEvent;
 import org.gwtproject.event.dom.client.BlurHandler;
 
+import elemental2.dom.DomGlobal;
+import elemental2.dom.Headers;
+import elemental2.dom.RequestInit;
+import jsinterop.base.Js;
+import jsinterop.base.JsPropertyMap;
+
 /**
  * @author Laszlo
  *
@@ -29,8 +38,7 @@ public class LatexTreeItemController extends RadioTreeItemController
 	private String lastInput = "";
 
 	/**
-	 * @param item
-	 *            AV item
+	 * @param item AV item
 	 */
 	public LatexTreeItemController(RadioTreeItem item) {
 		super(item);
@@ -94,7 +102,36 @@ public class LatexTreeItemController extends RadioTreeItemController
 				return;
 			}
 			item.getAV().setLaTeXLoaded();
-			evalInput.createGeoFromInput(keepFocus);
+			Headers headers = new Headers();
+			headers.append("Content-Type", "application/json");
+			headers.append("Authorization", "Bearer "); // replace with your API key
+			RequestInit init = RequestInit.create();
+			init.setMethod("POST");
+			init.setHeaders(headers);
+			TreeSet<GeoElement> geoElements =
+					app.getKernel().getConstruction().getGeoSetConstructionOrder();
+			String completeInput = item.getText() + "\n" + "INPUTS:" + "\n" + geoElements.stream()
+					.map(GeoElement::getLongDescription).collect(Collectors.joining("\n"));
+			DomGlobal.console.log(completeInput);
+			init.setBody(
+					"{'model': '@preset/geo-gebra-chatbot', 'messages': [{'role': 'user', 'content': '"
+							+ completeInput + "'}]}");
+			DomGlobal.fetch("https://openrouter.ai/api/v1/chat/completions", init)
+					.then(jsonResponse -> jsonResponse.json().then(jsonResp -> {
+						JsPropertyMap<Object> json = Js.asPropertyMap(jsonResp);
+						JsPropertyMap<Object> jsonChoices = Js.asPropertyMap(json.get("choices"));
+						JsPropertyMap<Object> jsonMessage = Js.asPropertyMap(jsonChoices.get("0"));
+						JsPropertyMap<Object> jsonContent =
+								Js.asPropertyMap(jsonMessage.get("message"));
+						for (String line : jsonContent.get("content").toString().split("\n")) {
+							evalInput.createGeoFromArbitraryString(line, keepFocus);
+						}
+						return null;
+					})).catch_(err -> {
+						DomGlobal.console.error("Fetch error", err);
+						return null;
+					});
+//			evalInput.createGeoFromInput(keepFocus);
 			setEditing(false);
 			return;
 		}
@@ -118,6 +155,7 @@ public class LatexTreeItemController extends RadioTreeItemController
 		}
 		// make sure editing flag is up to date e.g. after failed redefine
 		setEditing(true);
+		// make AI parse input
 		onEnter(true);
 		item.getAV().clearActiveItem();
 		dispatchKeyTypeEvent("\n");
@@ -168,7 +206,7 @@ public class LatexTreeItemController extends RadioTreeItemController
 	public GeoElementND evaluateToGeo() {
 		return evalInput.evaluateToGeo();
 	}
-	
+
 	/**
 	 * @param afterCb additional callback that runs after creation.
 	 */
@@ -177,8 +215,7 @@ public class LatexTreeItemController extends RadioTreeItemController
 	}
 
 	/**
-	 * @param text
-	 *            text to be inserted
+	 * @param text text to be inserted
 	 */
 	public void autocomplete(String text) {
 		KeyboardInputAdapter.onKeyboardInput(getMathField().getInternal(), text);
@@ -192,8 +229,7 @@ public class LatexTreeItemController extends RadioTreeItemController
 	}
 
 	/**
-	 * @param retexListener
-	 *            keyboard listener
+	 * @param retexListener keyboard listener
 	 */
 	public void setRetexListener(RetexKeyboardListener retexListener) {
 		this.retexListener = retexListener;
@@ -203,16 +239,14 @@ public class LatexTreeItemController extends RadioTreeItemController
 	 * Connect keyboard listener to keyboard
 	 */
 	public void setOnScreenKeyboardTextField() {
-		app.getKeyboardManager()
-				.setOnScreenKeyboardTextField(item);
+		app.getKeyboardManager().setOnScreenKeyboardTextField(item);
 		// prevent that keyboard is closed on clicks (changing
 		// cursor position)
 		CancelEventTimer.keyboardSetVisible();
 	}
 
 	/**
-	 * @param show
-	 *            whether to show keyboard
+	 * @param show whether to show keyboard
 	 */
 	public void initAndShowKeyboard(boolean show) {
 		retexListener = new RetexKeyboardListener(item.canvas, getMathField());
